@@ -7,6 +7,8 @@
 #include <sys/sysinfo.h>
 #include <utmpx.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 // Function prototypes
 void parse_arguments(int argc, char *argv[], int *samples, int *tdelay, int *system_flag, int *user_flag, int *sequential_flag, int *graphics_flag);
@@ -163,6 +165,7 @@ double getTotalCPUUsage(unsigned long long *cpu_last_sum, unsigned long long *cp
     return cpu_usage;
 }
 
+/*
 void gather_system_info() {
     // Gather and display system information here
     unsigned long long cpu_last_sum = 0;
@@ -199,7 +202,85 @@ void gather_system_info() {
     printf("---------------------------------------\n");
     
 }
+*/
 
+void gather_system_info() {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (pid == 0) { // Child process
+        close(pipefd[0]); // Close unused read end
+
+        // Redirect stdout to the write end of the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]); // Close write end of pipe after duplication
+
+        // Gather and display system information
+        unsigned long long cpu_last_sum = 0;
+        unsigned long long cpu_last_no_idle = 0;
+        long int time_in_seconds;
+        int core_num;
+        double percentage;
+        char time_str[10];
+        char day_str[50];
+        struct utsname uname_data;
+        uname(&uname_data);
+        struct sysinfo info;
+        sysinfo(&info);
+        
+        // Get core_num and percentage.
+        core_num = getCPUCoreCount();
+        percentage = getTotalCPUUsage(&cpu_last_sum, &cpu_last_no_idle);
+
+        printf("Number of cores: %d\n", core_num);
+        printf("total cpu use = %.2f%%\n", percentage);
+        printf("---------------------------------------\n");
+        printf("### System Information ###\n");
+        printf("System Name = %s\n", uname_data.sysname);
+        printf("Machine Name = %s\n", uname_data.nodename);
+        printf("Version = %s\n", uname_data.version);
+        printf("Release = %s\n", uname_data.release);
+        printf("Architecture = %s\n", uname_data.machine);
+        
+        time_in_seconds = info.uptime;
+        convert_seconds_to_hms(time_in_seconds, time_str);
+        convert_seconds_to_dhms(time_in_seconds, day_str);
+        
+        printf("System running since last reboot: %s (%s)\n", day_str, time_str);
+        printf("---------------------------------------\n");
+
+        // Exit the child process
+        exit(EXIT_SUCCESS);
+    } else { // Parent process
+        close(pipefd[1]); // Close unused write end
+
+        // Wait for the child process to complete
+        wait(NULL);
+
+        // Read data from the read end of the pipe
+        char buffer[4096];
+        ssize_t bytes_read = read(pipefd[0], buffer, sizeof(buffer));
+        if (bytes_read == -1) {
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
+
+        // Close read end of pipe after reading
+        close(pipefd[0]);
+
+        // Print the system information received from the child process
+        printf("%.*s", (int)bytes_read, buffer);
+    }
+}
+
+/*
 void gather_system_info_noCore(){
     // Gather and display system information here
     long int time_in_seconds;
@@ -224,7 +305,72 @@ void gather_system_info_noCore(){
     printf("System running since last reboot: %s (%s)\n",day_str,time_str);
     printf("---------------------------------------\n");
 }
+*/
 
+void gather_system_info_noCore() {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (pid == 0) { // Child process
+        close(pipefd[0]); // Close unused read end
+
+        // Redirect stdout to the write end of the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]); // Close write end of pipe after duplication
+
+        // Execute the function's code
+        long int time_in_seconds;
+        char time_str[10];
+        char day_str[50];
+        struct utsname uname_data;
+        uname(&uname_data);
+        struct sysinfo info;
+        sysinfo(&info);
+
+        printf("### System Information ###\n");
+        printf("System Name = %s\n", uname_data.sysname);
+        printf("Machine Name = %s\n", uname_data.nodename);
+        printf("Version = %s\n", uname_data.version);
+        printf("Release = %s\n", uname_data.release);
+        printf("Architecture = %s\n", uname_data.machine);
+
+        time_in_seconds = info.uptime;
+        convert_seconds_to_hms(time_in_seconds, time_str);
+        convert_seconds_to_dhms(time_in_seconds, day_str);
+
+        printf("System running since last reboot: %s (%s)\n", day_str, time_str);
+        printf("---------------------------------------\n");
+
+        // Exit the child process
+        exit(EXIT_SUCCESS);
+    } else { // Parent process
+        close(pipefd[1]); // Close unused write end
+
+        // Wait for the child process to complete
+        wait(NULL);
+
+        // Read data from the read end of the pipe
+        char buffer[4096];
+        ssize_t bytes_read = read(pipefd[0], buffer, sizeof(buffer));
+        if (bytes_read == -1) {
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
+
+        // Close read end of pipe after reading
+        close(pipefd[0]);
+
+        // Print the system information received from the child process
+        printf("%.*s", (int)bytes_read, buffer);
+    }
+}
 
 /*
 int get_user_num(){
@@ -245,6 +391,7 @@ int get_user_num(){
 }
 */
 
+/*
 void gather_user_info() {
     struct utmpx *ut;
     int count = 0;
@@ -265,7 +412,153 @@ void gather_user_info() {
     // Close the utmpx file
     endutxent();
 }
+*/
 
+void gather_user_info() {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } 
+    else if (pid == 0) { // Child process
+        close(pipefd[0]); // Close unused read end
+
+        // Redirect stdout to the write end of the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]); // Close write end of pipe after duplication
+
+        // Execute the function's code
+        struct utmpx *ut;
+        int count = 0;
+        // Open the utmpx file for reading
+        setutxent();
+
+	    printf("### Sessions/users ###\n");
+        // Read each entry in the utmpx file
+        while ((ut = getutxent()) != NULL) {
+            // Check if the entry represents a user process
+            if (ut->ut_type == USER_PROCESS) {
+                // Print information for the user
+                printf("%-13s %s (%s)\n", ut->ut_user, ut->ut_line, ut->ut_host);
+            }
+        }
+        printf("---------------------------------------\n");
+
+        // Close the utmpx file
+        endutxent();
+
+        // Exit the child process
+        exit(EXIT_SUCCESS);
+    } else { // Parent process
+        close(pipefd[1]); // Close unused write end
+
+        // Wait for the child process to complete
+        wait(NULL);
+
+        // Read data from the read end of the pipe
+        char buffer[4096];
+        ssize_t bytes_read = read(pipefd[0], buffer, sizeof(buffer));
+        if (bytes_read == -1) {
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
+
+        // Close read end of pipe after reading
+        close(pipefd[0]);
+
+        // Print the system information received from the child process
+        printf("%.*s", (int)bytes_read, buffer);
+    }
+}
+
+void print_each_sequential(int iterationTime, int samples){
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (pid == 0) { // Child process
+        close(pipefd[0]); // Close unused read end
+
+        // Redirect stdout to the write end of the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]); // Close write end of pipe after duplication
+
+        // Execute the function's code
+        unsigned long long cpu_last_sum = 0;
+        unsigned long long cpu_last_no_idle = 0;
+        int core_num;
+	    double percentage;
+        struct sysinfo info;
+	    sysinfo(&info);
+    
+        printf(">>> iteration %d\n", iterationTime);
+	    printf("Memory usage: %ld kilobytes\n", (info.totalram-info.freeram)/1024);
+	    printf("---------------------------------------\n");
+	    printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot) \n");
+	
+        // Main loop for sampling 
+        for (int i = 0; i < samples; i++) {
+       
+            if (i == iterationTime){
+                sysinfo(&info);
+                printf("%.2lf GB / %.2lf GB  -- %.2lf GB / %.2lf GB\n", (info.totalram-info.freeram)/(1024.0 * 1024 * 1024),info.totalram/(1024.0 * 1024 * 1024),
+                    (info.totalswap + info.totalram - info.freeram -info.freeswap)/(1024.0 * 1024 * 1024),(info.totalswap + info.totalram)/(1024.0 * 1024 * 1024));
+            }
+
+            else if(i != iterationTime){
+                printf("\n");
+            }
+
+        }
+	    printf("---------------------------------------\n");
+    
+        gather_user_info();
+    
+        // Get core_num and percentage.
+	    core_num = getCPUCoreCount();
+	    percentage = getTotalCPUUsage(&cpu_last_sum, &cpu_last_no_idle);
+	
+	    printf("Number of cores: %d\n", core_num);
+	    printf("total cpu use = %.2f%%\n", percentage);   
+        
+        // Exit the child process
+        exit(EXIT_SUCCESS);
+    } 
+    else { // Parent process
+        close(pipefd[1]); // Close unused write end
+
+        // Wait for the child process to complete
+        wait(NULL);
+
+        // Read data from the read end of the pipe
+        char buffer[4096];
+        ssize_t bytes_read = read(pipefd[0], buffer, sizeof(buffer));
+        if (bytes_read == -1) {
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
+
+        // Close read end of pipe after reading
+        close(pipefd[0]);
+
+        // Print the system information received from the child process
+        printf("%.*s", (int)bytes_read, buffer);
+    }    
+}
+
+/*
 void print_each_sequential(int iterationTime, int samples){
     unsigned long long cpu_last_sum = 0;
     unsigned long long cpu_last_no_idle = 0;
@@ -305,6 +598,7 @@ void print_each_sequential(int iterationTime, int samples){
 	printf("total cpu use = %.2f%%\n", percentage);
 
 }
+*/
 
 void gather_sequential_info(int samples,int tdelay){
     
@@ -319,6 +613,7 @@ void gather_sequential_info(int samples,int tdelay){
     }
     gather_system_info_noCore();  // The last iteration will print System Information
 }
+
 
 // Function to store graphical representation for memory into buffer
 void store_memory_graph(char *str, double previous, double current) {
@@ -362,6 +657,7 @@ void add_newline(char **array_of_string, int samples){
     }
 }
 
+
 void store_user_info(char * user_buf){
     char temp_buf[512];
     struct utmpx *ut;
@@ -393,8 +689,6 @@ void gather_memory_info(int samples, int tdelay, int user_flag){
     char * user_buf = malloc(sizeof(char) * 2024);
     unsigned long long cpu_last_sum = 0;
     unsigned long long cpu_last_no_idle = 0;
-    
-    store_user_info(user_buf);
 
     // Gather and display system information here
     int core_num;
