@@ -1,9 +1,9 @@
 CC = gcc
-CFLAGS = -Wall -g -std=c99 -Werror
+CFLAGS = -Wall -g -ggdb -std=c99 -Werror
 
 all: myprog
 
-myprog: stats_functions.o a1_main.o
+myprog: stats_functions.o main.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 %.o: %.c stats_functions.h 
